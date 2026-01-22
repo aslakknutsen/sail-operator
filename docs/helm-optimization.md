@@ -99,10 +99,10 @@ Replace existing `UpgradeOrInstallChart` calls with the new diff-aware method:
 
 ```go
 // Before
-_, err := r.ChartManager.UpgradeOrInstallChart(ctx, chartDir, values, namespace, releaseName, &ownerReference)
+_, err := r.ChartManager.UpgradeOrInstallChart(ctx, resourceFS, chartPath, values, namespace, releaseName, &ownerReference)
 
 // After  
-_, err := r.ChartManager.UpgradeOrInstallChartWithDiff(ctx, chartDir, values, namespace, releaseName, &ownerReference)
+_, err := r.ChartManager.UpgradeOrInstallChartWithDiff(ctx, resourceFS, chartPath, values, namespace, releaseName, &ownerReference)
 ```
 
 ### Behavior

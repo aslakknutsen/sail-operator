@@ -15,6 +15,9 @@
 package install
 
 import (
+	"io/fs"
+	"os"
+
 	v1 "github.com/istio-ecosystem/sail-operator/api/v1"
 	"github.com/istio-ecosystem/sail-operator/pkg/config"
 	"k8s.io/client-go/rest"
@@ -25,9 +28,17 @@ type Options struct {
 	// KubeConfig is the Kubernetes client configuration
 	KubeConfig *rest.Config
 
-	// ResourceDirectory is the path to bundled Helm charts.
-	// Structure: {ResourceDirectory}/{version}/charts/{chartName}/
-	ResourceDirectory string
+	// ResourceFS provides access to Helm charts and profiles.
+	// Can be an embed.FS (for embedded resources), os.DirFS (for filesystem path),
+	// or any other fs.FS implementation.
+	//
+	// Example with embedded resources:
+	//   import "github.com/istio-ecosystem/sail-operator/resources"
+	//   ResourceFS: resources.FS
+	//
+	// Example with filesystem path:
+	//   ResourceFS: os.DirFS("/var/lib/sail-operator/resources")
+	ResourceFS fs.FS
 
 	// HelmDriver specifies the Helm storage driver.
 	// One of: "secret", "configmap", or "memory".
@@ -85,4 +96,17 @@ func (o *Overrides) applyDefaults() {
 	if o.Namespace == "" {
 		o.Namespace = "istio-system"
 	}
+}
+
+// FromDirectory creates an fs.FS from a filesystem directory path.
+// This is a convenience function for consumers who want to load resources
+// from the filesystem instead of using embedded resources.
+//
+// Example:
+//
+//	installer, _ := install.NewInstaller(install.Options{
+//	    ResourceFS: install.FromDirectory("/var/lib/sail-operator/resources"),
+//	})
+func FromDirectory(path string) fs.FS {
+	return os.DirFS(path)
 }

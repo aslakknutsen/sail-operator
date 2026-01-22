@@ -16,11 +16,13 @@
 // It is designed for embedding in other operators (like OpenShift Ingress)
 // that need to install Istio without running a continuous controller.
 //
-// Example usage:
+// Example usage with embedded resources:
+//
+//	import "github.com/istio-ecosystem/sail-operator/resources"
 //
 //	installer, err := install.NewInstaller(install.Options{
-//	    KubeConfig:        kubeConfig,
-//	    ResourceDirectory: "/path/to/charts",
+//	    KubeConfig: kubeConfig,
+//	    ResourceFS: resources.FS,
 //	})
 //	if err != nil {
 //	    return err
@@ -28,6 +30,13 @@
 //
 //	// Simple installation with preset
 //	err = installer.Install(ctx, install.PresetGatewayAPI)
+//
+// Example usage with filesystem path:
+//
+//	installer, err := install.NewInstaller(install.Options{
+//	    KubeConfig: kubeConfig,
+//	    ResourceFS: install.FromDirectory("/var/lib/sail-operator/resources"),
+//	})
 //
 //	// Installation with overrides
 //	err = installer.InstallWithOverrides(ctx, install.PresetGatewayAPI, &install.Overrides{
@@ -39,6 +48,7 @@ package install
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"path"
 
 	v1 "github.com/istio-ecosystem/sail-operator/api/v1"
@@ -62,7 +72,7 @@ const (
 // operations and then returns.
 type Installer struct {
 	chartManager      *helm.ChartManager
-	resourceDir       string
+	resourceFS        fs.FS
 	platform          config.Platform
 	defaultProfile    string
 	operatorNamespace string
@@ -70,13 +80,13 @@ type Installer struct {
 }
 
 // NewInstaller creates a new Installer with the specified options.
-// The Options must include a valid KubeConfig and ResourceDirectory.
+// The Options must include a valid KubeConfig and ResourceFS.
 func NewInstaller(opts Options) (*Installer, error) {
 	if opts.KubeConfig == nil {
 		return nil, fmt.Errorf("KubeConfig is required")
 	}
-	if opts.ResourceDirectory == "" {
-		return nil, fmt.Errorf("ResourceDirectory is required")
+	if opts.ResourceFS == nil {
+		return nil, fmt.Errorf("ResourceFS is required")
 	}
 
 	opts.applyDefaults()
@@ -102,7 +112,7 @@ func NewInstaller(opts Options) (*Installer, error) {
 
 	return &Installer{
 		chartManager:      helm.NewChartManager(opts.KubeConfig, opts.HelmDriver),
-		resourceDir:       opts.ResourceDirectory,
+		resourceFS:        opts.ResourceFS,
 		platform:          platform,
 		defaultProfile:    opts.DefaultProfile,
 		operatorNamespace: opts.OperatorNamespace,
@@ -154,7 +164,7 @@ func (i *Installer) InstallWithOverrides(ctx context.Context, presetName PresetN
 		i.platform,
 		i.defaultProfile,
 		preset.BaseProfile,
-		i.resourceDir,
+		i.resourceFS,
 		revisionName,
 	)
 	if err != nil {
@@ -189,11 +199,12 @@ func (i *Installer) installIstiod(ctx context.Context, version, namespace, revis
 
 	// Install base chart (CRDs) for default revision
 	if revisionName == v1.DefaultRevision {
-		baseChartDir := path.Join(i.resourceDir, version, "charts", baseChartName)
+		baseChartPath := path.Join(version, "charts", baseChartName)
 		baseReleaseName := revisionName + "-" + baseChartName
 		_, err := i.chartManager.UpgradeOrInstallChart(
 			ctx,
-			baseChartDir,
+			i.resourceFS,
+			baseChartPath,
 			helmValues,
 			i.operatorNamespace,
 			baseReleaseName,
@@ -205,11 +216,12 @@ func (i *Installer) installIstiod(ctx context.Context, version, namespace, revis
 	}
 
 	// Install istiod chart
-	istiodChartDir := path.Join(i.resourceDir, version, "charts", istiodChartName)
+	istiodChartPath := path.Join(version, "charts", istiodChartName)
 	istiodReleaseName := revisionName + "-" + istiodChartName
 	_, err := i.chartManager.UpgradeOrInstallChart(
 		ctx,
-		istiodChartDir,
+		i.resourceFS,
+		istiodChartPath,
 		helmValues,
 		namespace,
 		istiodReleaseName,
@@ -224,12 +236,13 @@ func (i *Installer) installIstiod(ctx context.Context, version, namespace, revis
 
 // installCNI installs the Istio CNI chart
 func (i *Installer) installCNI(ctx context.Context, version, namespace string, values *v1.Values) error {
-	cniChartDir := path.Join(i.resourceDir, version, "charts", cniChartName)
+	cniChartPath := path.Join(version, "charts", cniChartName)
 	cniReleaseName := "istio-cni"
 
 	_, err := i.chartManager.UpgradeOrInstallChart(
 		ctx,
-		cniChartDir,
+		i.resourceFS,
+		cniChartPath,
 		helm.FromValues(values),
 		namespace,
 		cniReleaseName,
@@ -240,12 +253,13 @@ func (i *Installer) installCNI(ctx context.Context, version, namespace string, v
 
 // installZTunnel installs the ZTunnel chart
 func (i *Installer) installZTunnel(ctx context.Context, version, namespace string, values *v1.Values) error {
-	ztunnelChartDir := path.Join(i.resourceDir, version, "charts", ztunnelChartName)
+	ztunnelChartPath := path.Join(version, "charts", ztunnelChartName)
 	ztunnelReleaseName := "ztunnel"
 
 	_, err := i.chartManager.UpgradeOrInstallChart(
 		ctx,
-		ztunnelChartDir,
+		i.resourceFS,
+		ztunnelChartPath,
 		helm.FromValues(values),
 		namespace,
 		ztunnelReleaseName,
@@ -398,7 +412,7 @@ func (i *Installer) InstallWithOwnerReference(
 		i.platform,
 		i.defaultProfile,
 		preset.BaseProfile,
-		i.resourceDir,
+		i.resourceFS,
 		revisionName,
 	)
 	if err != nil {
@@ -410,33 +424,33 @@ func (i *Installer) InstallWithOwnerReference(
 	// Install components with owner reference
 	if preset.Components.Istiod {
 		if revisionName == v1.DefaultRevision {
-			baseChartDir := path.Join(i.resourceDir, resolvedVersion, "charts", baseChartName)
+			baseChartPath := path.Join(resolvedVersion, "charts", baseChartName)
 			baseReleaseName := revisionName + "-" + baseChartName
-			if _, err := i.chartManager.UpgradeOrInstallChart(ctx, baseChartDir, helmValues,
+			if _, err := i.chartManager.UpgradeOrInstallChart(ctx, i.resourceFS, baseChartPath, helmValues,
 				i.operatorNamespace, baseReleaseName, ownerRef); err != nil {
 				return fmt.Errorf("failed to install base chart: %w", err)
 			}
 		}
 
-		istiodChartDir := path.Join(i.resourceDir, resolvedVersion, "charts", istiodChartName)
+		istiodChartPath := path.Join(resolvedVersion, "charts", istiodChartName)
 		istiodReleaseName := revisionName + "-" + istiodChartName
-		if _, err := i.chartManager.UpgradeOrInstallChart(ctx, istiodChartDir, helmValues,
+		if _, err := i.chartManager.UpgradeOrInstallChart(ctx, i.resourceFS, istiodChartPath, helmValues,
 			overrides.Namespace, istiodReleaseName, ownerRef); err != nil {
 			return fmt.Errorf("failed to install istiod chart: %w", err)
 		}
 	}
 
 	if preset.Components.CNI {
-		cniChartDir := path.Join(i.resourceDir, resolvedVersion, "charts", cniChartName)
-		if _, err := i.chartManager.UpgradeOrInstallChart(ctx, cniChartDir, helmValues,
+		cniChartPath := path.Join(resolvedVersion, "charts", cniChartName)
+		if _, err := i.chartManager.UpgradeOrInstallChart(ctx, i.resourceFS, cniChartPath, helmValues,
 			overrides.Namespace, "istio-cni", ownerRef); err != nil {
 			return fmt.Errorf("failed to install CNI chart: %w", err)
 		}
 	}
 
 	if preset.Components.ZTunnel {
-		ztunnelChartDir := path.Join(i.resourceDir, resolvedVersion, "charts", ztunnelChartName)
-		if _, err := i.chartManager.UpgradeOrInstallChart(ctx, ztunnelChartDir, helmValues,
+		ztunnelChartPath := path.Join(resolvedVersion, "charts", ztunnelChartName)
+		if _, err := i.chartManager.UpgradeOrInstallChart(ctx, i.resourceFS, ztunnelChartPath, helmValues,
 			overrides.Namespace, "ztunnel", ownerRef); err != nil {
 			return fmt.Errorf("failed to install ztunnel chart: %w", err)
 		}

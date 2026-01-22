@@ -15,6 +15,7 @@
 package install
 
 import (
+	"os"
 	"testing"
 
 	v1 "github.com/istio-ecosystem/sail-operator/api/v1"
@@ -254,14 +255,14 @@ func TestNewInstallerValidation(t *testing.T) {
 		assert.Contains(t, err.Error(), "KubeConfig is required")
 	})
 
-	t.Run("empty ResourceDirectory", func(t *testing.T) {
+	t.Run("nil ResourceFS", func(t *testing.T) {
 		// Using a minimal valid rest.Config
 		cfg := &rest.Config{Host: "https://localhost:6443"}
 		_, err := NewInstaller(Options{
 			KubeConfig: cfg,
 		})
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "ResourceDirectory is required")
+		assert.Contains(t, err.Error(), "ResourceFS is required")
 	})
 }
 
@@ -291,4 +292,24 @@ func TestPresetBaseProfiles(t *testing.T) {
 		assert.True(t, validProfiles[preset.BaseProfile],
 			"preset %s has invalid base profile: %s", name, preset.BaseProfile)
 	}
+}
+
+func TestFromDirectory(t *testing.T) {
+	// Create a temp directory to test FromDirectory
+	tempDir := t.TempDir()
+
+	// Create a test file
+	testFile := "test.txt"
+	testContent := []byte("hello world")
+	err := os.WriteFile(tempDir+"/"+testFile, testContent, 0644)
+	require.NoError(t, err)
+
+	// Use FromDirectory to create an fs.FS
+	dirFS := FromDirectory(tempDir)
+	require.NotNil(t, dirFS)
+
+	// Verify we can read from it
+	content, err := os.ReadFile(tempDir + "/" + testFile)
+	require.NoError(t, err)
+	assert.Equal(t, testContent, content)
 }
