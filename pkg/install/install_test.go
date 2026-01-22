@@ -40,9 +40,9 @@ func TestLoadPresets(t *testing.T) {
 	// Verify gateway-api preset
 	gatewayAPI := presets[PresetGatewayAPI]
 	assert.Equal(t, PresetGatewayAPI, gatewayAPI.Name)
-	assert.Equal(t, "openshift", gatewayAPI.BaseProfile)
+	assert.Equal(t, "default", gatewayAPI.BaseProfile)
 	assert.True(t, gatewayAPI.Components.Istiod)
-	assert.True(t, gatewayAPI.Components.CNI)
+	assert.False(t, gatewayAPI.Components.CNI)
 	assert.False(t, gatewayAPI.Components.ZTunnel)
 
 	// Verify gateway-api-ambient preset
