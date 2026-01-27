@@ -130,10 +130,11 @@ func TestOverridesApplyDefaults(t *testing.T) {
 		expected  Overrides
 	}{
 		{
-			name:      "empty overrides gets default namespace",
+			name:      "empty overrides gets defaults",
 			overrides: Overrides{},
 			expected: Overrides{
 				Namespace: "istio-system",
+				Revision:  v1.DefaultRevision,
 			},
 		},
 		{
@@ -143,6 +144,17 @@ func TestOverridesApplyDefaults(t *testing.T) {
 			},
 			expected: Overrides{
 				Namespace: "custom-ns",
+				Revision:  v1.DefaultRevision,
+			},
+		},
+		{
+			name: "custom revision is preserved",
+			overrides: Overrides{
+				Revision: "my-revision",
+			},
+			expected: Overrides{
+				Namespace: "istio-system",
+				Revision:  "my-revision",
 			},
 		},
 	}
@@ -151,6 +163,7 @@ func TestOverridesApplyDefaults(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.overrides.applyDefaults()
 			assert.Equal(t, tt.expected.Namespace, tt.overrides.Namespace)
+			assert.Equal(t, tt.expected.Revision, tt.overrides.Revision)
 		})
 	}
 }
