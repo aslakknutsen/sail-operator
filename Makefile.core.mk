@@ -83,6 +83,9 @@ TAG ?= ${VERSION}
 IMAGE_BASE ?= sail-operator
 # Image URL to use all building/pushing image targets
 IMAGE ?= ${HUB}/${IMAGE_BASE}:${TAG}
+# Sidecar image
+SIDECAR_IMAGE_BASE ?= sail-sidecar
+SIDECAR_IMAGE ?= ${HUB}/${SIDECAR_IMAGE_BASE}:${TAG}
 # Namespace to deploy the controller in
 NAMESPACE ?= sail-operator
 # Prevent overwriting existing images in registry (default: false, set to true in release workflows)
@@ -267,6 +270,18 @@ push: docker-push ## Build and push docker image.
 .PHONY: docker-push
 docker-push: docker-build ## Build and Push docker image.
 	docker push ${IMAGE}
+
+.PHONY: build-sidecar
+build-sidecar: ## Build the sail-sidecar binary.
+	GOARCH=$(TARGET_ARCH) CGO_ENABLED=$(CGO_ENABLED) LDFLAGS="$(LD_FLAGS)" common/scripts/gobuild.sh $(REPO_ROOT)/out/$(TARGET_OS)_$(TARGET_ARCH)/sail-sidecar ./cmd/sail-sidecar/
+
+.PHONY: docker-build-sidecar
+docker-build-sidecar: build-sidecar ## Build sidecar docker image.
+	docker build ${DOCKER_BUILD_FLAGS} -f Dockerfile.sidecar -t ${SIDECAR_IMAGE} . --load
+
+.PHONY: docker-push-sidecar
+docker-push-sidecar: docker-build-sidecar ## Build and push sidecar docker image.
+	docker push ${SIDECAR_IMAGE}
 
 .PHONY: docker-push-nightly
 docker-push-nightly: TAG=$(MINOR_VERSION)-nightly-$(TODAY) ## Build and push nightly docker image.
